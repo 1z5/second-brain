@@ -82,3 +82,7 @@ LLM_MODEL=deepseek-chat
 2. **增量索引**：按文件指纹判断哪些需要重建
 3. **检索评测**：每次提问把命中的片段也打出来，方便你判断是检索问题还是生成问题
 4. **Web 界面**：替换命令行，可以做成浏览器里随时打开的形式
+
+## MCP Server（已上线）
+
+`mcp-server/` 把知识库暴露成 MCP 工具（`search_knowledge` / `ask_knowledge` / `add_document` / `list_sources`），Claude Desktop、DSH 等客户端可直接调用。协议层用标准库从零实现（JSON-RPC 2.0 + stdio），11 项协议测试通过。详见 [mcp-server/README.md](mcp-server/README.md)。
