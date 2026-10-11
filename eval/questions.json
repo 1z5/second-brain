@@ -1,0 +1,22 @@
+[
+  {"id": "q01", "question": "番茄钟的标准时长是多久？", "expected_source": "pomodoro.md", "key_facts": ["25 分钟", "5 分钟"]},
+  {"id": "q02", "question": "每完成 4 个番茄钟之后应该休息多长时间？", "expected_source": "pomodoro.md", "key_facts": ["15", "30 分钟"]},
+  {"id": "q03", "question": "番茄钟进行中冒出杂念应该怎么办？", "expected_source": "pomodoro.md", "key_facts": ["写在纸上", "休息"]},
+  {"id": "q04", "question": "番茄工作法最常见的误区是什么？", "expected_source": "pomodoro.md", "key_facts": ["追求完美", "作废"]},
+  {"id": "q05", "question": "休息时间刷手机算不算休息？", "expected_source": "pomodoro.md", "key_facts": ["不算"]},
+  {"id": "q06", "question": "一个番茄钟内应该做几件事？", "expected_source": "pomodoro.md", "key_facts": ["一件"]},
+  {"id": "q07", "question": "被打断的番茄钟要怎么处理？", "expected_source": "pomodoro.md", "key_facts": ["作废", "重来"]},
+  {"id": "q08", "question": "番茄工作法里计时器的作用是什么？", "expected_source": "pomodoro.md", "key_facts": ["25 分钟"]},
+  {"id": "q09", "question": "休息时应该如何安排杂念？", "expected_source": "pomodoro.md", "key_facts": ["统一安排"]},
+  {"id": "q10", "question": "番茄工作法失败的常见原因是什么？", "expected_source": "pomodoro.md", "key_facts": ["计时器"]},
+  {"id": "q11", "question": "RAG 检索不准时分块太大有什么问题？", "expected_source": "rag-troubleshooting.md", "key_facts": ["平均化", "细节"]},
+  {"id": "q12", "question": "分块太小会导致什么后果？", "expected_source": "rag-troubleshooting.md", "key_facts": ["上下文不完整"]},
+  {"id": "q13", "question": "专有名词检索不到应该怎么解决？", "expected_source": "rag-troubleshooting.md", "key_facts": ["BM25", "混合"]},
+  {"id": "q14", "question": "通用 embedding 模型在专业领域表现如何？", "expected_source": "rag-troubleshooting.md", "key_facts": ["下降"]},
+  {"id": "q15", "question": "top_k 设置过多会有什么问题？", "expected_source": "rag-troubleshooting.md", "key_facts": ["噪声", "带偏"]},
+  {"id": "q16", "question": "top_k 设置过少会有什么问题？", "expected_source": "rag-troubleshooting.md", "key_facts": ["缺依据"]},
+  {"id": "q17", "question": "RAG 分块的推荐字符数是多少？", "expected_source": "rag-troubleshooting.md", "key_facts": ["300", "500"]},
+  {"id": "q18", "question": "如何判断该不该更换 embedding 模型？", "expected_source": "rag-troubleshooting.md", "key_facts": ["50 篇", "人工评测"]},
+  {"id": "q19", "question": "混合检索是怎么融合分数的？", "expected_source": "rag-troubleshooting.md", "key_facts": ["加权"]},
+  {"id": "q20", "question": "为什么向量检索对专有名词不敏感？", "expected_source": "rag-troubleshooting.md", "key_facts": ["语义相似"]}
+]
