@@ -40,6 +40,9 @@ vi .env
 .venv/bin/python ask.py "番茄钟被打断了怎么办？"
 .venv/bin/python ask.py          # 不加参数进入连续对话模式
 
+# Web 问答服务（浏览器打开 http://localhost:8000）
+.venv/bin/uvicorn web.server:app --port 8000
+
 # 检索质量评测（20 题标注集，Recall@4 + 事实覆盖率）
 .venv/bin/python eval/run_eval.py
 .venv/bin/python eval/run_eval.py answer   # 端到端（含 LLM 生成，较慢）
@@ -55,6 +58,7 @@ second-brain/
 ├── ingest.py        # 导入：切块 → 向量化 → 建索引
 ├── ask.py           # 提问：检索 → 生成 → 带引用回答
 ├── eval/            # 检索评测（20 题标注集 + run_eval.py）
+├── web/             # Web 问答服务（FastAPI 单页 + API）
 ├── mcp-server/      # MCP server：知识库暴露成工具
 └── .env             # API key 和检索参数
 ```
@@ -93,7 +97,7 @@ LLM_MODEL=deepseek-chat
 1. ~~混合检索~~：✅ 已落地——**自实现 BM25（字符二元组中文分词）+ RRF 融合**（lib_retrieval.py，约 60 行纯算法）。不采用 LanceDB 自带 hybrid/FTS：实测其 FTS 索引导致跨进程读取不稳定（同一条记录时而读到时而读空，0.27.1 已是最新版），核心链路不建在库的不稳定特性上。评测保持 Recall@4 20/20
 2. ~~增量索引~~：✅ 已落地——文件内容 MD5 指纹存 meta 表，ingest 按指纹差异只重建变更文件（新增/变更/删除/未变四态），未变文件的分块原样保留（合并重写策略，个人库千级分块秒级）。过程中修复一个潜伏一年的 bug：lancedb 0.27.1 的 list_tables() 返回对象而非列表，in 判断永远 False，曾导致增量丢数据
 3. ~~检索评测~~：✅ 已落地——`eval/` 有 20 题标注集 + 评测脚本，当前 Recall@4 = 20/20（100%，平均 37ms）、回答事实覆盖率 9/9（详见 eval/README.md）
-4. **Web 界面**：替换命令行，可以做成浏览器里随时打开的形式
+4. ~~Web 界面~~：✅ 已落地——`web/server.py`（FastAPI）：单页聊天界面 + `POST /api/ask`（RAG 问答，实测 4.2s 带引用）+ `GET /api/sources`。运行：`.venv/bin/uvicorn web.server:app --port 8000`
 
 ## MCP Server（已上线）
 

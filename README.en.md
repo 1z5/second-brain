@@ -91,7 +91,7 @@ LLM_MODEL=deepseek-chat
 1. ~~Hybrid retrieval~~: ✅ shipped — **self-implemented BM25 (character-bigram tokenization for Chinese) + RRF fusion** (lib_retrieval.py, ~60 lines of pure algorithms). LanceDB's built-in hybrid/FTS was deliberately NOT used: its FTS index caused unstable cross-process reads (records intermittently read as empty; 0.27.1 is the latest version), and a core pipeline shouldn't rest on unstable library features. Eval holds at Recall@4 20/20
 2. ~~Incremental indexing~~: ✅ shipped — MD5 content fingerprints in a meta table; ingest diffs fingerprints and rebuilds only changed files (add/change/delete/unchanged), preserving unchanged chunks via merge-rewrite (seconds for a thousand-chunk personal library). Along the way, fixed a year-old latent bug: lancedb 0.27.1's `list_tables()` returns an object, not a list, so `in` checks were always False — it had been silently dropping data in incremental updates
 3. ~~Retrieval eval~~: ✅ shipped — `eval/` has a 20-question labeled set and harness; current **Recall@4 = 20/20 (100%, 37ms avg)** and **fact coverage 9/9** (see eval/README.md)
-4. **Web UI**: replace the CLI with something always open in the browser
+4. ~~Web UI~~: ✅ shipped — `web/server.py` (FastAPI): single-page chat UI + `POST /api/ask` (RAG Q&A, measured 4.2s with citations) + `GET /api/sources`. Run: `.venv/bin/uvicorn web.server:app --port 8000`
 
 ## MCP Server (shipped)
 
