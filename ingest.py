@@ -89,15 +89,26 @@ def build_rows(docs):
 def table_exists(db) -> bool:
     """兼容不同版本 lancedb 的表名查询 API。"""
     if hasattr(db, "list_tables"):
-        return settings.table_name in db.list_tables()
+        result = db.list_tables()
+        # 坑：0.27.1 的 list_tables() 返回 ListTablesResult 对象而非列表，
+        # 直接 `name in result` 永远为 False（曾导致增量更新丢掉全部
+        # 未变文件的分块——debug 了一整轮才定位到）
+        tables = result.tables if hasattr(result, "tables") else result
+        return settings.table_name in tables
     return settings.table_name in db.table_names()
+
+
+META_TABLE = "file_meta"
 
 
 def connect_db(reset: bool):
     settings.db_dir.mkdir(parents=True, exist_ok=True)
     db = lancedb.connect(str(settings.db_dir))
-    if reset and table_exists(db):
-        db.drop_table(settings.table_name)
+    if reset:
+        if table_exists(db):
+            db.drop_table(settings.table_name)
+        if META_TABLE in db.table_names():
+            db.drop_table(META_TABLE)
     return db
 
 
@@ -109,26 +120,42 @@ def save_rows(db, rows):
         if table_exists(db):
             db.drop_table(settings.table_name)
         tbl = db.create_table(settings.table_name, data=rows)
-    ensure_fts_index(tbl)
     return tbl
 
 
-def ensure_fts_index(tbl):
-    """创建全文索引（BM25 半边）。混合检索 = 向量语义 + BM25 关键词，
-    RRF 融合重排——治纯向量对专有名词不敏感的问题。"""
-    try:
-        tbl.create_fts_index("text", replace=True)
-    except Exception as e:
-        # FTS 索引失败不阻塞主流程（降级为纯向量检索）
-        print(f"[warn] FTS 索引创建失败，将使用纯向量检索: {e}")
 
 
 def existing_sources(db):
-    """已导入的文件列表，用于跳过重复导入。"""
+    """已导入文件的指纹 {source: hash}（meta 表）。"""
+    if META_TABLE not in db.table_names():
+        return {}
+    tbl = db.open_table(META_TABLE)
+    return {row["source"]: row["hash"] for row in tbl.to_arrow().to_pylist()}
+
+
+def file_hash(path) -> str:
+    """文件内容指纹（MD5）。"""
+    import hashlib
+    return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def save_meta(db, records):
+    """重写 meta 表（全量当前状态，量小无所谓）。"""
+    if META_TABLE in db.table_names():
+        db.drop_table(META_TABLE)
+    db.create_table(META_TABLE, data=records)
+
+
+def read_chunks(db):
+    """读出索引里现有全部分块。
+
+    注意：不能用 search(None)——表上建了 FTS 索引后，新打开句柄的
+    search(None) 会返回空（LanceDB 0.27 实测坑，原句柄却正常）。
+    to_arrow() 是可靠的全表扫描。
+    """
     if not table_exists(db):
-        return set()
-    tbl = db.open_table(settings.table_name)
-    return {row["source"] for row in tbl.search(None).to_list()}
+        return []
+    return db.open_table(settings.table_name).to_arrow().to_pylist()
 
 
 def main():
@@ -138,23 +165,70 @@ def main():
         raise SystemExit(f"data/ 目录里没有找到 .md 或 .txt 文件：{settings.data_dir}")
 
     db = connect_db(reset)
-    done = set() if reset else existing_sources(db)
-    new_docs = [d for d in docs if d["source"] not in done]
-    if not new_docs:
-        print("所有文件都已导入，没有新增内容。用 --reset 可强制重建。")
+
+    # 当前磁盘状态：{source: (path, hash)}
+    current = {}
+    for path in sorted(settings.data_dir.rglob("*")):
+        if path.name.upper().startswith("README"):
+            continue
+        if path.suffix.lower() in (".md", ".txt") and path.is_file():
+            rel = str(path.relative_to(settings.data_dir))
+            current[rel] = (path, file_hash(path))
+
+    # 已导入状态（meta 表指纹）
+    known = {} if reset else existing_sources(db)
+
+    # 差异计算
+    to_add = [s for s, (_, h) in current.items() if known.get(s) != h]
+    to_delete = [s for s in known if s not in current]
+    unchanged = [s for s in current if s not in to_add and s not in to_delete]
+
+    if not to_add and not to_delete:
+        print(f"没有变化：{len(unchanged)} 个文件均未改动（指纹一致）。用 --reset 可强制重建。")
         return
 
-    print(f"发现 {len(new_docs)} 个新文件，开始切块与向量化……")
-    rows = build_rows(new_docs)
-    if not rows:
-        raise SystemExit("没有生成任何分块，请检查笔记内容。")
+    print(f"增量更新：新增/变更 {len(to_add)} 个，删除 {len(to_delete)} 个，未变 {len(unchanged)} 个")
 
-    vectors = embed_texts([r["text"] for r in rows])
-    for row, vec in zip(rows, vectors):
-        row["vector"] = vec
+    # 策略：合并重写——保留未变文件的分块，重新生成变更文件的，overwrite 全量写回。
+    # （不用 LanceDB 的 delete 谓词做局部删除：实测 delete + count_rows 的版本
+    # 语义在这套流程下不稳定；个人库千级分块的重写是秒级，确定性和可测试性优先。）
+    keep_rows = [r for r in read_chunks(db) if r["source"] in set(unchanged)] if not reset else []
 
-    tbl = save_rows(db, rows)
-    print(f"完成：新增 {len(rows)} 个分块，索引现有 {tbl.count_rows()} 行。")
+    if to_add:
+        add_docs = []
+        for source in to_add:
+            path, _ = current[source]
+            text = path.read_text(encoding="utf-8")
+            add_docs.append({
+                "source": source,
+                "title": find_title(text, path.name),
+                "text": text,
+            })
+        rows = build_rows(add_docs)
+        if rows:
+            vectors = embed_texts([r["text"] for r in rows])
+            for row, vec in zip(rows, vectors):
+                row["vector"] = vec
+            print(f"写入 {len(rows)} 个新分块（保留 {len(keep_rows)} 个未变分块）")
+            all_rows = keep_rows + rows
+        else:
+            print("变更的文件没有生成分块（内容为空？）")
+            all_rows = keep_rows
+    else:
+        all_rows = keep_rows
+
+    if all_rows:
+        save_rows(db, all_rows)
+        print(f"完成：索引现有 {len(all_rows)} 行。")
+    else:
+        # 全被删光了：清表
+        if table_exists(db):
+            db.drop_table(settings.table_name)
+        print("完成：索引已清空（没有笔记了）。")
+
+    # 更新指纹表
+    save_meta(db, [{"source": s, "hash": h} for s, (_, h) in current.items()])
+    print("指纹表已更新。")
 
 
 if __name__ == "__main__":

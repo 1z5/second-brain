@@ -9,6 +9,7 @@ import sys
 import lancedb
 
 from config import settings, chat_client, embed_one
+from lib_retrieval import tokenize
 
 SYSTEM_PROMPT = """你是用户的个人知识库助手。请严格根据下面给出的「资料片段」回答用户的问题。
 
@@ -20,25 +21,49 @@ SYSTEM_PROMPT = """你是用户的个人知识库助手。请严格根据下面�
 
 
 def retrieve(question: str):
+    """混合检索：向量语义（本地 embedding）+ 自实现 BM25，RRF 融合。
+
+    不用 LanceDB 的 hybrid/FTS——实测其 FTS 索引会导致跨进程读取
+    不稳定（详见 lib_retrieval.py 说明），核心链路不建在库的不稳定
+    特性上；BM25 与 RRF 均为自实现，可控可测。
+    """
+    from lib_retrieval import BM25, rrf_fuse, to_rank
+
     db = lancedb.connect(str(settings.db_dir))
     if settings.table_name not in db.table_names():
         raise SystemExit("还没有索引，请先运行：python3 ingest.py")
     tbl = db.open_table(settings.table_name)
+
+    # 全库行（个人库规模小，全量读出；同时作为 BM25 语料）
+    rows = tbl.to_arrow().to_pylist()
+    if not rows:
+        return []
+
+    keys = [(r["source"], r["chunk_index"]) for r in rows]
+    key_to_row = dict(zip(keys, rows))
+
+    # 向量路：放大候选池，给融合留空间
     query_vec = embed_one(question)
-    try:
-        # 混合检索：向量语义 + BM25 关键词，RRF（Reciprocal Rank Fusion）
-        # 重排融合两路结果。纯向量对专有名词不敏感，混合后鲁棒得多。
-        # 注意：表上没有注册 embedding function，查询向量必须显式传入，
-        # 否则 hybrid 查询会抛 "No embedding function for vector"。
-        return (tbl.search(question, query_type="hybrid")
-                   .vector(query_vec)
-                   .limit(settings.top_k)
-                   .rerank()
-                   .to_list())
-    except Exception as e:
-        # 降级纯向量检索——但必须留痕，避免静默降级骗过评测
-        print(f"[warn] 混合检索失败，降级纯向量: {e}")
-        return tbl.search(query_vec).limit(settings.top_k).to_list()
+    vec_hits = tbl.search(query_vec).limit(max(settings.top_k * 5, len(rows))).to_list()
+    vec_order = [(h["source"], h["chunk_index"]) for h in vec_hits if (h["source"], h["chunk_index"]) in key_to_row]
+    vec_rank = to_rank(vec_order)
+
+    # 关键词路：BM25 对全库，按行下标排名
+    bm25 = BM25([tokenize(r["text"]) for r in rows])
+    bm_scores = bm25.scores(question)
+    bm_order = sorted(range(len(rows)), key=lambda i: -bm_scores[i])
+    bm_rank = to_rank(bm_order)
+
+    # RRF 融合两路排名
+    fused = rrf_fuse(vec_rank, bm_rank)
+    ranked = sorted(fused.items(), key=lambda x: -x[1])[:settings.top_k]
+
+    out = []
+    for key, _score in ranked:
+        row = key_to_row.get(key) if isinstance(key, tuple) else rows[key]
+        if row is not None:
+            out.append(row)
+    return out
 
 
 def build_user_prompt(question: str, hits) -> str:
