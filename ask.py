@@ -24,7 +24,21 @@ def retrieve(question: str):
     if settings.table_name not in db.table_names():
         raise SystemExit("还没有索引，请先运行：python3 ingest.py")
     tbl = db.open_table(settings.table_name)
-    return tbl.search(embed_one(question)).limit(settings.top_k).to_list()
+    query_vec = embed_one(question)
+    try:
+        # 混合检索：向量语义 + BM25 关键词，RRF（Reciprocal Rank Fusion）
+        # 重排融合两路结果。纯向量对专有名词不敏感，混合后鲁棒得多。
+        # 注意：表上没有注册 embedding function，查询向量必须显式传入，
+        # 否则 hybrid 查询会抛 "No embedding function for vector"。
+        return (tbl.search(question, query_type="hybrid")
+                   .vector(query_vec)
+                   .limit(settings.top_k)
+                   .rerank()
+                   .to_list())
+    except Exception as e:
+        # 降级纯向量检索——但必须留痕，避免静默降级骗过评测
+        print(f"[warn] 混合检索失败，降级纯向量: {e}")
+        return tbl.search(query_vec).limit(settings.top_k).to_list()
 
 
 def build_user_prompt(question: str, hits) -> str:

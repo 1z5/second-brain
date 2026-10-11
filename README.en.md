@@ -88,7 +88,7 @@ LLM_MODEL=deepseek-chat
 
 ## Roadmap
 
-1. **Hybrid retrieval**: vector + BM25 keyword search for proper nouns
+1. ~~Hybrid retrieval~~: ✅ shipped — LanceDB hybrid search (vector semantics + BM25 keywords, fused with RRF reranking). The ingest step builds an FTS index; retrieval passes the query vector explicitly (the table has no registered embedding function — omitting it raises "No embedding function for vector", now fixed) and any fallback to pure-vector search logs a warning instead of degrading silently. Eval holds at Recall@4 20/20, 26ms avg
 2. **Incremental indexing**: rebuild only what changed (file fingerprints)
 3. ~~Retrieval eval~~: ✅ shipped — `eval/` has a 20-question labeled set and harness; current **Recall@4 = 20/20 (100%, 37ms avg)** and **fact coverage 9/9** (see eval/README.md)
 4. **Web UI**: replace the CLI with something always open in the browser

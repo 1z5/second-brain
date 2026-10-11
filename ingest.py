@@ -109,7 +109,18 @@ def save_rows(db, rows):
         if table_exists(db):
             db.drop_table(settings.table_name)
         tbl = db.create_table(settings.table_name, data=rows)
+    ensure_fts_index(tbl)
     return tbl
+
+
+def ensure_fts_index(tbl):
+    """创建全文索引（BM25 半边）。混合检索 = 向量语义 + BM25 关键词，
+    RRF 融合重排——治纯向量对专有名词不敏感的问题。"""
+    try:
+        tbl.create_fts_index("text", replace=True)
+    except Exception as e:
+        # FTS 索引失败不阻塞主流程（降级为纯向量检索）
+        print(f"[warn] FTS 索引创建失败，将使用纯向量检索: {e}")
 
 
 def existing_sources(db):
