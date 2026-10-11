@@ -1,5 +1,7 @@
 # second-brain：个人知识库 RAG 问答
 
+> [English](README.en.md)
+
 把散落在本地的 Markdown / TXT 笔记导入一个可对话的知识库，提问时**按资料回答并标注来源**。生成用 StepFun step-5 API，向量化在本地跑，笔记内容不出本机。
 
 ## 架构
@@ -51,8 +53,9 @@ second-brain/
 ├── db/              # LanceDB 索引（自动生成，别手改）
 ├── config.py        # 所有可调参数
 ├── ingest.py        # 导入：切块 → 向量化 → 建索引
-├── ask.py
-├── eval/                # 检索评测（20 题标注集 + run_eval.py）           # 提问：检索 → 生成 → 带引用回答
+├── ask.py           # 提问：检索 → 生成 → 带引用回答
+├── eval/            # 检索评测（20 题标注集 + run_eval.py）
+├── mcp-server/      # MCP server：知识库暴露成工具
 └── .env             # API key 和检索参数
 ```
 
