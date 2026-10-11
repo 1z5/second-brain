@@ -18,6 +18,10 @@
 
 # 2. 本地 embedding：装 Ollama，拉一个 274MB 的小模型
 brew install ollama          # 或到 ollama.com 下载
+# macOS 无 brew 时（本仓库实测路径）：下载 ollama-darwin.tgz，解压后把
+# ollama、llama-server、libggml-*.so 放同一目录（新版 Ollama 的
+# llama-server 不随主程序分发，缺少会报 500），然后：
+ollama serve &               # 启动服务
 ollama pull nomic-embed-text
 
 # 3. 配置（已生成，检查一下即可）
@@ -33,6 +37,10 @@ vi .env
 # 提问
 .venv/bin/python ask.py "番茄钟被打断了怎么办？"
 .venv/bin/python ask.py          # 不加参数进入连续对话模式
+
+# 检索质量评测（20 题标注集，Recall@4 + 事实覆盖率）
+.venv/bin/python eval/run_eval.py
+.venv/bin/python eval/run_eval.py answer   # 端到端（含 LLM 生成，较慢）
 ```
 
 ## 目录结构
@@ -43,7 +51,8 @@ second-brain/
 ├── db/              # LanceDB 索引（自动生成，别手改）
 ├── config.py        # 所有可调参数
 ├── ingest.py        # 导入：切块 → 向量化 → 建索引
-├── ask.py           # 提问：检索 → 生成 → 带引用回答
+├── ask.py
+├── eval/                # 检索评测（20 题标注集 + run_eval.py）           # 提问：检索 → 生成 → 带引用回答
 └── .env             # API key 和检索参数
 ```
 
@@ -80,7 +89,7 @@ LLM_MODEL=deepseek-chat
 
 1. **混合检索**：向量 + BM25 关键词，治专有名词搜不到
 2. **增量索引**：按文件指纹判断哪些需要重建
-3. **检索评测**：每次提问把命中的片段也打出来，方便你判断是检索问题还是生成问题
+3. ~~检索评测~~：✅ 已落地——`eval/` 有 20 题标注集 + 评测脚本，当前 Recall@4 = 20/20（100%，平均 37ms）、回答事实覆盖率 9/9（详见 eval/README.md）
 4. **Web 界面**：替换命令行，可以做成浏览器里随时打开的形式
 
 ## MCP Server（已上线）
